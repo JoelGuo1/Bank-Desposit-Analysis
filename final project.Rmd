@@ -1,0 +1,326 @@
+---
+title: "Final Project"
+author: "Zhihao Guo"
+date: "March 31, 2018"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Data Selection
+```{r}
+setwd("C:/Users/zhihg/Desktop/2018Winter/stats 415/Final Project")
+bank= read.delim("bank-additional-full.csv",header = TRUE,sep = ";")
+bank_data2= read.delim("bank-additional.csv",header = TRUE,sep = ";")
+#bank=read.csv(file="/Users/yunfeinie/Desktop/bank_additional/bank-additional-full.csv", header=TRUE, sep=";")
+#banktest=read.csv(file="/Users/yunfeinie/Desktop/bank_additional/bank-additional.csv", header=TRUE, sep=";")
+#summary(bank)
+bank = bank[which(bank$duration != 0), ]
+subyes=bank[which(bank$y=='yes'),]
+subno=bank[which(bank$y=='no'),]
+set.seed(1)
+trainid=sample(nrow(subyes), 4000)
+subyestrain=subyes[trainid, ]
+set.seed(1)
+trainid2=sample(nrow(subno), 4000)
+subnotrain=subno[trainid2, ]
+train=rbind(subyestrain, subnotrain)
+subyestest=subyes[-trainid, ]
+subnotest=subno[-trainid2, ]
+set.seed(1)
+subnotest=subnotest[sample(nrow(subnotest), 640), ]
+test=rbind(subyestest, subnotest)
+#train$y = ifelse(train$y == "yes",1,0)
+#test$y=ifelse(test$y == "yes",1,0)
+varnames2 = c('job', 'education', 'contact', 'month', 
+              'day_of_week', 'duration','campaign', 'poutcome','y')
+train_reduced = train[,varnames2] 
+test_reduced=test[,varnames2]
+varnames = c('job', 'education', 'contact', 'month', 'day_of_week', 'duration',
+             'campaign', 'poutcome', 'emp.var.rate', 'cons.price.idx', 
+             'cons.conf.idx', 'euribor3m', 'nr.employed','y')
+train_reduced1 = train[,varnames]
+test_reduced1 = test[,varnames]
+#bank_train1=bank_train
+#bank_train1$job=as.factor(bank_train$job)
+#bank_train1$marital=as.factor(bank_train$marital)
+#bank_train1$education=as.factor(bank_train$education)
+#bank_train1$default=as.factor(bank_train$default)
+#bank_train1$housing=as.factor(bank_train$housing)
+#bank_train1$loan=as.factor(bank_train$loan)
+#bank_train1=data.matrix(bank_train1) ## this will convert the whole data frame to a numeric matrix.
+#bank_train2=data.frame(bank_train1) ## change categorical variables into 1,2,3...
+#bank_train3 = data.frame(model.matrix(y ~ ., bank_train)[, -1]) ## 48 columns, 47 variables, create dummy variable and change all the levels into seperate individual columns.
+```
+bank_train is the train data set without the social and economic context attributes. bakn_train_full is the full train data set.
+## data boxplot
+```{r}
+attach(train_reduced1)
+boxplot(emp.var.rate~y,col=c('powderblue', 'mistyrose'),ylab="emp.var.rate")
+boxplot(cons.price.idx~y, col=c('powderblue', 'mistyrose'),ylab = "cons.price.idx")
+boxplot(cons.conf.idx~y, col=c('powderblue', 'mistyrose'),ylab = "cons.conf.idx")
+boxplot(euribor3m~y, col=c('powderblue', 'mistyrose'),ylab="euribor3m")
+boxplot(nr.employed~y, col=c('powderblue', 'mistyrose'),ylab="nr.employed")
+boxplot(campaign~y, col=c('powderblue', 'mistyrose'),ylab="campaign")
+boxplot(duration~y, col=c('powderblue', 'mistyrose'),ylab="duration",ylim = c(1,800))
+
+```
+
+## data correlation
+```{r}
+cor(train[,16:20],method="pearson")
+cor(train[,16:20],method="spearman")
+```
+## ggplot
+```{r}
+library(ggplot2)
+exam.plot <- ggplot(data=train, aes(x=train[,-21], y=train$y, col = ifelse(y == 1,'dark green','red'), size=0.5))+
+  geom_point()+
+  labs(x="Exam 1 Scores", y="Exam 2 Scores", title="Exam Scores", colour="Exam Scores")+
+  theme_bw()+
+  theme(legend.position="none")
+```
+###Several Method
+## probably not able to do lda and qda
+```{r}
+library(MASS)
+bank_lda =lda(y ~ .,data = train) ##variables are collinear??
+bank_lda
+bank_lda_train_pred =predict(bank_lda, bank_train)$class
+bank_lda_test_pred =predict(bank_lda, bank_test)$class
+calc_class_err = function(actual, predicted) {
+  mean(actual != predicted)
+  }
+calc_class_err(predicted = bank_lda_train_pred,actual = train$y)
+calc_class_err(predicted = bank_lda_test_pred,actual = test$y)
+```
+Train MSE= 0.0943. Test MSE=0.0913.
+
+logistics
+```{r}
+mod1 <-glm(y~.,data = train, family = binomial)
+#summary(mod1)
+predLogit.train <-predict(mod1, train)
+predProbs.train <-exp(predLogit.train)/(1+ exp(predLogit.train))
+predClass.train <-rep(0,length(predProbs.train))
+predClass.train[predProbs.train>0.5] <- 1
+mod1TrainError=sum(predClass.train!=train$y)/ length(predClass.train)
+mod1TrainError
+predLogit.test <-predict(mod1, test)
+predProbs.test <-exp(predLogit.test)/(1+ exp(predLogit.test))
+predClass.test <-rep(0,length(predProbs.test))
+predClass.test[predProbs.test>0.5] <- 1
+mod1TestError <-sum(predClass.test!=test$y)/length(predClass.test)
+mod1TestError
+## draw decision boundary
+slope <- coef(mod1)[2]/(-coef(mod1)[3])
+intercept <- coef(mod1)[1]/(-coef(mod1)[3]) 
+```
+```{r}
+set.seed(1234)
+
+x1 <- rnorm(20, 1, 2)
+x2 <- rnorm(20)
+
+y <- sign(-1 - 2 * x1 + 4 * x2 )
+
+y[ y == -1] <- 0
+
+df <- cbind.data.frame( y, x1, x2)
+
+mdl <- glm( y ~ . , data = df , family=binomial)
+
+slope <- coef(mdl)[2]/(-coef(mdl)[3])
+intercept <- coef(mdl)[1]/(-coef(mdl)[3]) 
+
+library(lattice)
+xyplot( x2 ~ x1 , data = df, groups = y,
+   panel=function(...){
+       panel.xyplot(...)
+       panel.abline(intercept , slope)
+       panel.grid(...)
+       })
+```
+##Logistics Regression after variable selection(w/o economic parameter)
+use train_reduced data set
+```{r}
+mod1 <-glm(y~.,data = train_reduced, family = binomial)
+#summary(mod1)
+predLogit.train <-predict(mod1, train_reduced)
+predProbs.train <-exp(predLogit.train)/(1+ exp(predLogit.train))
+predClass.train <-rep(0,length(predProbs.train))
+predClass.train[predProbs.train>0.5] <- 1
+mod1TrainError=sum(predClass.train!=train_reduced$y)/ length(predClass.train)
+mod1TrainError
+predLogit.test <-predict(mod1, test_reduced)
+predProbs.test <-exp(predLogit.test)/(1+ exp(predLogit.test))
+predClass.test <-rep(0,length(predProbs.test))
+predClass.test[predProbs.test>0.5] <- 1
+mod1TestError <-sum(predClass.test!=test_reduced$y)/length(predClass.test)
+mod1TestError
+#par(mfrow=c(2,2))
+#plot(mod1)
+```
+Logistics Regression after variable selection(w/o economic parameter): train MSE: 0.1645. Test MSE: 0.1507813.
+###Logistics Regression after variable selection(w/ economic parameter)
+```{r}
+mod1 <-glm(y~.,data = train_reduced1, family = binomial)
+#summary(mod1)
+predLogit.train <-predict(mod1, train_reduced1)
+predProbs.train <-exp(predLogit.train)/(1+ exp(predLogit.train))
+predClass.train <-rep(0,length(predProbs.train))
+predClass.train[predProbs.train>0.5] <- 1
+mod1TrainError=sum(predClass.train!=train_reduced1$y)/ length(predClass.train)
+mod1TrainError
+predLogit.test <-predict(mod1, test_reduced1)
+predProbs.test <-exp(predLogit.test)/(1+ exp(predLogit.test))
+predClass.test <-rep(0,length(predProbs.test))
+predClass.test[predProbs.test>0.5] <- 1
+mod1TestError <-sum(predClass.test!=test_reduced1$y)/length(predClass.test)
+mod1TestError
+```
+###LR only for the significant predictors
+```{r}
+attach(train)
+mod2 <-glm(y~nr.employed+euribor3m,data = train_reduced1, family = binomial)
+#summary(mod1)
+predLogit.train1 <-predict(mod2, train_reduced1)
+predProbs.train1 <-exp(predLogit.train1)/(1+ exp(predLogit.train1))
+predClass.train1 <-rep(0,length(predProbs.train1))
+predClass.train1[predProbs.train1>0.5] <- 1
+mod1TrainError=sum(predClass.train1!=train_reduced1$y)/ length(predClass.train1)
+mod1TrainError
+predLogit.test <-predict(mod2, test_reduced1)
+predProbs.test <-exp(predLogit.test)/(1+ exp(predLogit.test))
+predClass.test <-rep(0,length(predProbs.test))
+predClass.test[predProbs.test>0.5] <- 1
+mod1TestError <-sum(predClass.test!=test_reduced1$y)/length(predClass.test)
+mod1TestError
+slope <- coef(mod2)[2]/(-coef(mod2)[3])
+intercept <- coef(mod2)[1]/(-coef(mod2)[3])
+plot(test_reduced1$nr.employed, test_reduced1$euribor3m,col = c("green", "red")[test_reduced1$y+1],
+     xlab = "nr.employed", ylab = "euribor3m",
+     main = "True class vs Predicted class by Logistic")
+abline(a=intercept,b=slope)
+points(test_reduced1$nr.employed, test_reduced1$euribor3m,pch = c(2,3)[predClass.test+1])
+legend("bottomright", c("true_subscribeyes","true_subscribeno", "pred_subscribeyes","pred_subscribeno"),col=c("green", "red", "black", "black"), pch=c(1,1,2,3),cex = 0.6)
+```
+Logistics Regression after variable selection(w/ economic parameter). We see that train error is 0.134125 and test error is 0.1210938.
+
+##KNN Are we able to perform KNN on categorical predictor? Only if we define the distance. So dont use this!
+## Tree
+```{r}
+set.seed(1)
+library(tree)
+##transfer all nominal variables into numeric variables
+###bank_train1$default=as.numeric(factor(bank_train$default,levels = ###c("no","yes","unknown")))
+###bank_train1$job = as.numeric(factor(bank_train$job,levels = ###c("admin.","blue-collar","entrepreneur","housemaid","management","retired","self-e###mployed","services","student","technician","unemployed","unknown")))
+###bank_train1$marital=as.numeric(factor(bank_train$default,levels = ###c("divorced","married","single","unknown")))
+#tree.bank = tree(as.factor(y)~as.factor(job)+as.factor(default),bank_train)
+#tree.bank = tree(y~.,bank_data1[,-c(16:20)]) ## Why tree fails here?
+tree.bank1 = tree(y~job+contact+month+duration+campaign+pdays+previous+poutcome,bank_train)
+tree.bank1
+plot(tree.bank1)
+text(tree.bank1,pretty=0,cex=0.5)
+
+#plot(tree.bank)
+#text(tree.bank,pretty=0,cex=0.5)
+#cv.bank=cv.tree(tree.bank,FUN=prune.misclass)
+#cv.bank
+#library(rpart)
+#library(rpart.plot)
+#rpart.bank=rpart(y~age+job+marital+education+default+housing+loan,data=bank_data1[,-c(16:20)],method = "class",cp=1)
+#prp(rpart.bank)
+```
+
+ I think there is something wrong with my tree since most categorical predctors are excluded which should have been significant.
+##random tree
+```{r}
+library(randomForest)
+set.seed(1)
+attach(train)
+#random forest
+rf.bank=randomForest(y~.-duration,data=train,mtry=sqrt(15),importance=TRUE) ## infinite runtime
+rf.bank
+varImpPlot(rf.bank)
+```
+
+## boosting
+```{r}
+library(gbm)
+set.seed(1)
+attach(train_reduced1)
+##boost.bank=gbm(y~.-duration,data=train,distribution="adaboost",n.trees=500)
+boost.bank=gbm(y~.,data=train_reduced1,distribution="adaboost",n.trees=500,interaction.depth = 4)
+summary(boost.bank)
+par(mfrow=c(1,3))
+plot(boost.bank,i="nr.employed")
+plot(boost.bank,i="month")
+plot(boost.bank,i="euribor3m")
+```
+
+###Dimension Reduction
+Ridge/Lasso
+```{r}
+library(glmnet)
+X = model.matrix(y ~ ., train)[, -1]
+y = train$y
+set.seed(1)
+grid=10^seq(10,-2,length=100)
+ridge.mod=glmnet(X,y,alpha=0,lambda=grid,thresh=1e-12)
+cv.out=cv.glmnet(X,y,alpha=0)
+bestlam=cv.out$lambda.min
+bestlam
+ridge.pred_train=predict(ridge.mod,s=bestlam,newx=X)
+mean((ridge.pred_train-y)^2)
+X1 = model.matrix(y ~ ., test)[, -1]
+y1=test$y
+ridge.pred_test=predict(ridge.mod,s=bestlam,newx=X1)
+mean((ridge.pred_train-y1)^2)
+##lasso
+lasso.mod=glmnet(X,y,alpha=1,lambda=grid)
+cv.out=cv.glmnet(X,y,alpha=1)
+bestlam=cv.out$lambda.min
+lasso.coef=predict(lasso.mod,type="coefficients",s=bestlam)
+lasso.coef
+par(mfrow = c(1, 2))
+plot(lasso.mod)
+plot(lasso.mod, xvar = "lambda", label = TRUE)
+```
+
+The lasso shrinkage result kind of support the tree result that most categorical variables are not that significant, thus we can get rid of them.
+
+###Best Subset
+```{r}
+### forward/backward selection
+library(SignifReg)
+attach(train)
+##fw.fit <-SignifReg(y~., bank_train1, alpha = 0.05, direction = "forward", criterion = "p-value")
+##fw.fit   this will return error??
+library(leaps)
+regfit.fwd=regsubsets(y~.,data=train,nvmax=50,method="forward")
+reg.summary_fwd=summary(regfit.fwd)
+which.max(reg.summary_fwd$adjr2)
+which.min(reg.summary_fwd$cp)
+which.min(reg.summary_fwd$bic) ## return same answer as reg.full 
+plot(regfit.fwd,scale="r2")
+coef(regfit.fwd,which.max(reg.summary_fwd$adjr2))
+coef(regfit.fwd,which.max(reg.summary_fwd$cp))
+coef(regfit.fwd,which.max(reg.summary_fwd$bic))
+regfit.bwd=regsubsets(y~.,data=train,nvmax=50,method="backward")
+reg.summary_bwd=summary(regfit.bwd)
+which.max(reg.summary_bwd$adjr2)
+which.min(reg.summary_bwd$cp)
+which.min(reg.summary_bwd$bic) ## same too
+coef(regfit.bwd,which.max(reg.summary_bwd$adjr2))
+coef(regfit.bwd,which.max(reg.summary_bwd$cp))
+coef(regfit.bwd,which.max(reg.summary_bwd$bic))
+#regfit.full=regsubsets(y~.,data=train,nvmax = 50) 
+#reg.summary=summary(regfit.full)
+#coef(regfit.full,which.max(reg.summary$adjr2))
+#coef(regfit.full,which.min(reg.summary$cp))
+#coef(regfit.full,which.min(reg.summary$bic))
+```
+The ajusted R_square gives 13 best selection. Cp(AIC) gives 11 and BIC has 10. I see that all of three methods keep age, marital education,default, contact, duration, campaign, pdays, previous, and poutcome. All the numeric variables are kept?? Why??
